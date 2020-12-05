@@ -1,0 +1,13 @@
+[package]
+name = "audios-lib"
+version = "0.1.0"
+edition = "2018"
+authors = ["avlec <avlecxk@gmail.com>"]
+description = "Cool audio library for rust."
+readme = "README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cpal = "0.13.1"
+claxon = "0.4.3"
