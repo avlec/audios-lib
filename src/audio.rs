@@ -4,7 +4,7 @@ use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
 
-
+#[allow(dead_code)]
 enum AudioChannelMessage {
 	SendNext(i32),
 	NOP
@@ -29,6 +29,7 @@ impl SourceType {
 
 		match file_extension.to_lowercase().as_str() {
 			"flac" => SourceType::FLAC(file),
+			"" => SourceType::SOURCELESS,
 			_ => SourceType::UNSUPPORTED
 		}
 	}
@@ -69,11 +70,14 @@ fn err_fn<T>(err: T) where T: std::fmt::Display {
 impl AudioConsumer {
 	fn new(data_channel: mpsc::Receiver<f32>) -> AudioConsumer {
 		let host = cpal::default_host();
-		let device = host.default_output_device().expect("Where are your fucking speakers?");
-		let mut supported_configs_range = device.supported_output_configs().expect("Error querying devices.");
-		let supported_config = supported_configs_range.next().expect("No supported config!?").with_max_sample_rate();
-		let sample_format = supported_config.sample_format();
-		let config = supported_config.into();
+
+		let device = host.default_output_device()
+			.expect("No default audio device.");
+		let mut supported_configs_range = device.supported_output_configs()
+			.expect("Error querying devices.");
+		let supported_config = supported_configs_range.next()
+			.expect("No supported stream configuration.")
+			.with_max_sample_rate();
 
 		let mut ac = AudioConsumer {
 			data_channel: Arc::new(Mutex::new(data_channel)),
@@ -81,8 +85,8 @@ impl AudioConsumer {
 				host,
 				device,
 				supported_configs_range,
-				sample_format,
-				config,
+				sample_format: supported_config.sample_format(),
+				config: supported_config.into(),
 				stream: None
 			}),
 		};
@@ -169,9 +173,9 @@ trait DeviceAudioProducer {
 }
 
 impl LocalAudioProducer for AudioProducer {
-	fn new(file: String, tx_channel: mpsc::Sender<f32>) -> AudioProducer {
+	fn new(file: String, data_channel: mpsc::Sender<f32>) -> AudioProducer {
 		let mut ap = AudioProducer {
-			data_channel: Arc::new(Mutex::new(tx_channel)),
+			data_channel: Arc::new(Mutex::new(data_channel)),
 			source_type: Arc::new(SourceType::from_local(file)),
 			thread: None,
 		};
@@ -237,7 +241,9 @@ pub struct AudioCable {
 impl AudioCable {
 	pub fn new(audio_source: String) -> Self {
 		let (tx, rx): (std::sync::mpsc::Sender<f32>, std::sync::mpsc::Receiver<f32>) = std::sync::mpsc::channel();
-		let (_tx_signal, _rx_signal): (std::sync::mpsc::Sender<bool>, std::sync::mpsc::Receiver<bool>) = std::sync::mpsc::channel();
+
+		let comm_chan = crossbeam_channel::unbounded::<i32>();
+
 		AudioCable {
 			data_source: <AudioProducer as LocalAudioProducer>::new(audio_source, tx),
 			data_destination: AudioConsumer::new(rx),
